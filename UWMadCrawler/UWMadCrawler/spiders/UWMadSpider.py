@@ -47,7 +47,7 @@ class CourseSpider(BaseSpider):
         'http://public.my.wisc.edu/portal/f/u124l1s4/normal/render.uP',
     ]
     def parse(self, response):
-        yield FormRequest.from_response(response, formnumber=1, formdata={'termChoice': curTerm}, callback=self.parse_result_page)
+        yield FormRequest.from_response(response, formnumber=1, formdata={'termChoice': self.curTerm}, callback=self.parse_result_page)
     def parse_result_page(self, response):
       #Write to File
       filename = "Madison_Lectures.html"
