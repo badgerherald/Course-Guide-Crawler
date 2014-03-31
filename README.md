@@ -13,7 +13,7 @@ To run the crawler, [install Scrapy](http://doc.scrapy.org/en/latest/intro/insta
 This will crawl the website and print out the courses on the register.
 
 ## Notice
-This program is in heavy beta, as our the docs. Please stay tuned for updates and updated documentation.
+This program is in heavy beta, as are the docs. Please stay tuned for updates and updated documentation.
 
 
 
