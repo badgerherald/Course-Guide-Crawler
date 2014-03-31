@@ -39,7 +39,6 @@ import re #Use regex to clean up the soup
 
 
  
-#As of 2/17/2014, this spider works like a charm!
 class CourseSpider(BaseSpider):
     name = "UWMad"
     curTerm = '1144' #Insert the term you wish to search for here! (Spring 2014 is 1144)
@@ -64,7 +63,7 @@ class CourseSpider(BaseSpider):
       for td_course in soup.findAll("td", { "class":"courseResultUL","align":"center"})[:5]: #got rid of [:5]
         course = td_course.parent
         tdata = course.find_all("td")
-    #Skip the first 3, they hold nothing and are only there for bad website design
+        #Skip the first 3, they hold nothing and are only there for bad website design
         department  = tdata[2].a["title"]
         course_num = tdata[3].get_text().strip()
         course_title = tdata[4].get_text().strip()
