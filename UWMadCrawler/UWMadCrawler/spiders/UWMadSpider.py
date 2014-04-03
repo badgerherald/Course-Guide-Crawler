@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 
 
 # Program: UW-Madison Course Crawler
@@ -16,145 +16,119 @@
 # not hooked up to any database whatsoever, so if you wish to save the information crawled and not just print it
 # to the screen, you will have to do so on your own.
 
-
-
-
-
-
-
-
-from scrapy.spider import BaseSpider
-from scrapy.selector import HtmlXPathSelector
 from bs4 import BeautifulSoup
-#When we run into UTF-8 characters
-from scrapy.contrib.spiders import CrawlSpider, Rule
-from scrapy.contrib.linkextractors.sgml import SgmlLinkExtractor
+from datetime import datetime
+import html5lib
+import re
+from scrapy.spider import BaseSpider
 from scrapy.selector import HtmlXPathSelector
 from scrapy.http.request import Request
 from scrapy.http.request.form import FormRequest
-from w3lib.url import urljoin_rfc
 from scrapy.utils.response import get_base_url
-import html5lib
-import re #Use regex to clean up the soup
+from urlparse import urljoin
+
+from UWMadCrawler.items import CourseItem, SectionItem
 
 
- 
 class CourseSpider(BaseSpider):
     name = "UWMad"
-    curTerm = '1144' #Insert the term you wish to search for here! (Spring 2014 is 1144)
+    curTerm = '1152'  # (Fall 2014 is 1152)
+    classes = []
 
     start_urls = [
         'http://public.my.wisc.edu/portal/f/u124l1s4/normal/render.uP',
     ]
+
     def parse(self, response):
-        yield FormRequest.from_response(response, formnumber=1, formdata={'termChoice': self.curTerm}, callback=self.parse_result_page)
+        yield FormRequest.from_response(response, formnumber=1, formdata={'termChoice': self.curTerm, 'resultsPerPage': '200'},
+                                        callback=self.parse_result_page)
+
     def parse_result_page(self, response):
-      #Write to File
-      filename = "Madison_Lectures.html"
-      body = response.body
-      body = re.sub('&nbsp;'," ",body)
-      body = re.sub(r'\bcollapsed""><strong>Starts\b', 'collapsed"><strong>Starts',body)
-      body = re.sub('(?s)<script(.*?)</script>', "",body)
-      soup = BeautifulSoup(body, "html5lib") #doesn't work with BSoup
-      pretty = soup.encode('ascii','ignore')
-      file = open(filename,'w')
-      file.write(str(pretty))
+        body = response.body
+        body = re.sub('&nbsp;', " ", body)
+        body = re.sub(r'\bcollapsed""><strong>Starts\b', 'collapsed"><strong>Starts', body)
+        body = re.sub('(?s)<script(.*?)</script>', "", body)
+        soup = BeautifulSoup(body, "html5lib")
 
-      for td_course in soup.findAll("td", { "class":"courseResultUL","align":"center"})[:5]: #got rid of [:5]
-        course = td_course.parent
-        tdata = course.find_all("td")
-        #Skip the first 3, they hold nothing and are only there for bad website design
-        department  = tdata[2].a["title"]
-        course_num = tdata[3].get_text().strip()
-        course_title = tdata[4].get_text().strip()
-        credits = tdata[5].get_text().strip()
-        desc = tdata[6].get_text().strip()
-        last_taught = tdata[7].get_text().strip()
-        # Now load sibling table, which contains descrip
-        nextSibling = course.next_sibling.next_sibling #CourseResult tag
+        last_updated_text = soup.find("span", {"class": "dataRefreshTimestamp"}).get_text().strip()
+        last_updated_unix = datetime.strptime(last_updated_text, "%I:%M%p %b %d, %Y").strftime("%s")
 
-        description = nextSibling.contents[3].contents[1].get_text().strip()
-        pReq = nextSibling.contents[3].contents[3].get_text().strip()
-        
-    # #Go up and  get the <tr> tha tholds our course
-    
+        # All courseResultULs are results, but not all CourseResults are. Use the courseResultsUL to get the
+        # parent courseResult, which is guaranteed to be a real result
+        for td_course in soup.findAll("td", {"class": "courseResultUL", "align": "center"}):
+            course = td_course.parent
+            tdata = course.find_all("td")
+            # Skip the first 2, they hold nothing
+            department = tdata[2].a["title"]
+            course_num = tdata[3].get_text().strip()
+            course_title = tdata[4].get_text().strip()
+            num_credits = tdata[5].get_text().strip()
+            desc = tdata[6].get_text().strip()
+            last_taught = tdata[7].get_text().strip()
 
+            # Now load sibling table, which contains course description and prerequisites
+            nextSibling = course.next_sibling.next_sibling
+            description = nextSibling.contents[3].contents[1].get_text().strip()
+            pReq = nextSibling.contents[3].contents[3].get_text().strip()
+            pReq = re.sub('Pre-Reqs:', "", pReq).decode('utf-8', 'ignore')
 
-        print '>>>>>>>department>>>>>>>>>',department
-        print '>>>>>>>>course num>>>>>>>>',course_num
-        print '>>>>>>>>course title>>>>>>',course_title
-        print '>>>>>>>>credits>>>>>>>>>>>',credits
-        print '>>>>>>>>>desc>>>>>>>>>>>>>',desc
-        print '>>>>>>last taught>>>>>>>>>',last_taught
-        print '>>>>>>>>>crip>>>>>>>>>>>>>',description
-        pReq = re.sub('Pre-Reqs:', "",pReq).decode('utf-8', 'ignore')
-        print '>>>>>>Pre-Reqs   >>>>>>>>>',pReq
-        print '=========================='
+            base_url = get_base_url(response)
 
-        
+            current_class = CourseItem(
+                department=department,
+                course_num=course_num,
+                course_title=course_title,
+                credits=num_credits,
+                desc=desc,
+                last_taught=last_taught,
+                description=description,
+                pReq=pReq,
+            )
+            yield current_class
 
+            # Scrape class pages to get sections for current class
+            section_url = tdata[4].find("a")["href"]
+            section = Request(url=urljoin(base_url, section_url), callback=self.parse_section)
+            section.meta['department'] = department
+            section.meta['course_num'] = course_num
+            section.meta['course_title'] = course_title
+            section.meta['last_updated'] = last_updated_unix
+            yield section
 
-        #   #GRAB THE SECTION LINK 
-        base_url = get_base_url(response)
-        hxs = HtmlXPathSelector(response)
-  
-        # #Grab all the Section Links
-        sections = hxs.select('//td[contains(@class, "sectionExpandColumn")]/a/@href').extract()
-        for section_url in sections:
-            yield Request(url = urljoin_rfc(base_url, section_url), callback=self.parse_section) 
+        # Advance to next page
+        next_page_url = soup.find("a", {"title": "go to next page"})["href"]
+        if next_page_url:
+            yield Request(url=urljoin(get_base_url(response), next_page_url), callback=self.parse_result_page)
 
-
-      hxs = HtmlXPathSelector(response)
-      pages = hxs.select('//div[contains(@class, "searchPagination")]/a[contains(text(), ">")]/@href').extract()
-      print 'PAGES COUNT=',len(pages)
-      counter = 0
-      for page in pages:
-          counter += 1
-          hxs = HtmlXPathSelector(response)
-          courses = hxs.select('//tr[contains(@class, "courseResult")]/td[5]/@text').extract()
-          for course in courses:
-            print '>>>>>>>>>>>>>>>>>>>>>>>>>>>',course
-          yield Request(url=urljoin_rfc(get_base_url(response),page),callback=self.parse_result_page)
-    def parse_section(self,response):
-
-            
-
-        #Throw it in beautifulSoup
+    def parse_section(self, response):
         soup = BeautifulSoup(response.body)
-        #Print it out in a text document for reference
-        pretty = soup.prettify()
-        filename = "practiceLecture"
-        file = open(filename,'wb')
-        file.write('>>>>>>>>>> SOUP <<<<<<<<<<<')
-        pretty = soup.encode('ascii','ignore')
-        file.write(str(pretty))
-        #END PRINTING PROCESS ------------
-        for tr in soup.find_all("tr", { "class":"detailsClassSection" }):
-          print ':::::::::::::::::SECTION::::::::::::::::::::::'
-          #Grab a list of all the td 's'
-          tdata = tr.find_all("td")
-          #GRAB THE FIRST td, otherwise known as the class_no
-          class_no = tdata[0].get_text().strip()
-          sec_no = tdata[1].strong.get_text().strip()
-          session = tdata[2].get_text().strip()
-          time = tdata[3].get_text().strip()
-          place = tdata[4].get_text().strip()
-          teacher =tdata[5].get_text().strip()
-          credits = tdata[6].get_text().strip()
-          #NUMBER 7 is ALL THE HONORS/INFO/NOTES. MUST BE PARSED SEPERATELY
-          ########################################################
-          openSeats = tdata[8].get_text().strip()
-          #Find out if the section is open or not
-          seat_status = tdata[9].get("data-enrollmentstatus")
-          print '>>>>>>>class_no>>>>>>>>',class_no
-          print '>>>>>>>sec_no>>>>>>>>>>',sec_no
-          print '>>>>>>>session>>>>>>>>>',session
-          print '>>>>>>>time>>>>>>>>>>>>',time
-          print '>>>>>>>place>>>>>>>>>>>',place
-          print '>>>>>>>teacher>>>>>>>>>',teacher
-          print '>>>>>>>>credits>>>>>>>>',credits
-          print '>>>>>>>>openSeats>>>>>>',openSeats
-          print '>>>>>>>>Open?>>>>>>>>>>',seat_status
-              
-            
+        for tr in soup.find_all("tr", {"class": "detailsClassSection"}):
+            tdata = tr.find_all("td")
+            class_no = tdata[0].get_text().strip()
+            sec_no = tdata[1].strong.get_text().strip()
+            session = tdata[2].get_text().strip()
+            time = tdata[3].get_text().strip()
+            place = tdata[4].get_text().strip()
+            teacher = tdata[5].get_text().strip()
+            num_credits = tdata[6].get_text().strip()
+            # TODO: Parse honors information in tdata[7]?
+            openSeats = tdata[8].get_text().strip()
+            seat_status = tdata[9].get("data-enrollmentstatus")
 
+            current_section = SectionItem(
+                department=response.meta['department'],
+                course_num=response.meta['course_num'],
+                course_title=response.meta['course_title'],
+                last_updated=response.meta['last_updated'],
+                class_no=class_no,
+                sec_no=sec_no,
+                session=session,
+                time=time,
+                place=place,
+                teacher=teacher,
+                credits=num_credits,
+                openSeats=openSeats,
+                seat_status=seat_status
+            )
+
+            yield current_section

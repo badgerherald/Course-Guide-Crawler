@@ -8,8 +8,11 @@
 
 BOT_NAME = 'UWMadCrawler'
 
+ITEM_PIPELINES = {
+    'UWMadCrawler.pipelines.SqlitePipeline': 100,
+}
 SPIDER_MODULES = ['UWMadCrawler.spiders']
 NEWSPIDER_MODULE = 'UWMadCrawler.spiders'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = 'UWMadCrawler (+http://www.yourdomain.com)'
+USER_AGENT = ''
