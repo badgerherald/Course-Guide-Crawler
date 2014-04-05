@@ -1,6 +1,11 @@
-The MIT License (MIT)
+This code is a fork of, and includes significant code from, the UWMadCrawler project.
+Source location: http://github.com/jckelley/UWMadCrawler
 
-Copyright (c) 2014 The Badger Herald, Inc.
+The original license for UWMadCrawler is below.
+
+---
+
+Copyright (c) 2014 Joe Kelley
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
